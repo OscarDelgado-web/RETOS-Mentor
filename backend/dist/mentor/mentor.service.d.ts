@@ -15,4 +15,5 @@ export declare class MentorService {
             level: import("@prisma/client").$Enums.ProgressLevel;
         };
     }>;
+    private requestLlmAnswer;
 }

@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProgressLevel {
+  NOT_EVALUATED
+  BEGINNER
+  IN_PROGRESS
+  COMPETENT
+}
+
+model Career {
+  id       Int       @id @default(autoincrement())
+  name     String
+  subjects Subject[]
+  students Student[]
+}
+
+model Subject {
+  id       Int     @id @default(autoincrement())
+  careerId Int
+  career   Career  @relation(fields: [careerId], references: [id], onDelete: Cascade)
+  name     String
+  topics   Topic[]
+}
+
+model Topic {
+  id        Int                    @id @default(autoincrement())
+  subjectId Int
+  subject   Subject                @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  name      String
+  progress  StudentTopicProgress[]
+}
+
+model Student {
+  id       Int                    @id @default(autoincrement())
+  name     String
+  careerId Int
+  career   Career                 @relation(fields: [careerId], references: [id], onDelete: Restrict)
+  progress StudentTopicProgress[]
+  sessions MentorSession[]
+}
+
+model StudentTopicProgress {
+  studentId Int
+  student   Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  topicId   Int
+  topic     Topic         @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  level     ProgressLevel @default(NOT_EVALUATED)
+
+  @@id([studentId, topicId])
+}
+
+model MentorSession {
+  id        Int             @id @default(autoincrement())
+  studentId Int
+  student   Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  createdAt DateTime        @default(now())
+  messages  MentorMessage[]
+}
+
+model MentorMessage {
+  id        Int           @id @default(autoincrement())
+  sessionId Int
+  session   MentorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String        // 'user', 'assistant', 'system'
+  content   String
+  createdAt DateTime      @default(now())
+}

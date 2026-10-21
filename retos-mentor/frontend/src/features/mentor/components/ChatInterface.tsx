@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import type { MentorMessageResponse } from '../../../types/api';
+import type { AcademicResourceSource, MentorMessageResponse } from '../../../types/api';
 import { fetchApi } from '../../../config/api';
 
 // Añadimos las extensiones al estado local de mensajes
@@ -8,9 +8,10 @@ interface Message {
   sender: 'user' | 'mentor';
   extensionType?: 'text' | 'code_snippet' | 'concept_card';
   extensionData?: any;
+  sources?: AcademicResourceSource[];
 }
 
-export const ChatInterface = ({ topicId }: { topicId: number }) => {
+export const ChatInterface = ({ studentId, subjectId, topicId }: { studentId: number; subjectId: number; topicId: number }) => {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<Message[]>([
     { text: '¡Hola! Soy tu Mentor Virtual. Selecciona un tema de la propuesta y hazme una pregunta.', sender: 'mentor' }
@@ -34,14 +35,15 @@ export const ChatInterface = ({ topicId }: { topicId: number }) => {
     try {
       const res = await fetchApi<MentorMessageResponse>('/mentor/messages', {
         method: 'POST',
-        body: JSON.stringify({ message: currentMsg, topicId })
+        body: JSON.stringify({ studentId, subjectId, topicId, message: currentMsg })
       });
       setIsTyping(false);
       setMessages(prev => [...prev, { 
         text: res.answer, 
         sender: 'mentor',
         extensionType: res.extensionType,
-        extensionData: res.extensionData
+        extensionData: res.extensionData,
+        sources: res.sources,
       }]);
     } catch (error) {
       setIsTyping(false);
@@ -74,6 +76,19 @@ export const ChatInterface = ({ topicId }: { topicId: number }) => {
             }`}>
               {m.text}
             </div>
+
+            {m.sources?.length ? (
+              <ul className="mt-2 space-y-1 text-sm">
+                {m.sources.map(source => (
+                  <li key={source.id}>
+                    <a className="text-blue-700 underline" href={source.url} target="_blank" rel="noreferrer">
+                      {source.title}
+                    </a>
+                    {source.description && <span className="ml-2 text-xs text-gray-500">{source.description}</span>}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             
             {/* Extensión: Tarjeta de Concepto */}
             {m.extensionType === 'concept_card' && m.extensionData && (

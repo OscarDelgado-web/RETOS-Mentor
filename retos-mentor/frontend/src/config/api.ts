@@ -29,6 +29,7 @@ export const fetchApi = async <T>(endpoint: string, options?: RequestInit): Prom
       return { 
         answer: '¡Excelente pregunta! Una variable es como una caja donde guardamos información. Aquí tienes un resumen visual y un ejemplo en código:', 
         context: { topic: 'Variables', level: 'BEGINNER' },
+        sources: [],
         extensionType: 'concept_card',
         extensionData: {
           title: 'Variables en Python',
@@ -42,6 +43,7 @@ export const fetchApi = async <T>(endpoint: string, options?: RequestInit): Prom
     return { 
       answer: `He analizado tu mensaje: "${body.message}". ¿Te gustaría profundizar en algún concepto específico del temario?`, 
       context: { topic: 'General', level: 'BEGINNER' },
+      sources: [],
       extensionType: 'text'
     } as unknown as T;
   }

@@ -5,24 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-
-export interface SendMentorMessageDto {
-  studentId: number;
-  subjectId: number;
-  topicId: number;
-  message: string;
-}
+import { SendMentorMessageDto } from './send-mentor-message.dto';
+import { createLlmProvider } from './llm-provider';
+import type { LlmProvider } from './llm-provider';
 
 @Injectable()
 export class MentorService {
   constructor(private prisma: PrismaService) {}
 
   async sendMessage(data: SendMentorMessageDto) {
-    const { studentId, subjectId, topicId, message } = data ?? {};
-    if (![studentId, subjectId, topicId].every((id) => Number.isInteger(id) && id > 0) ||
-      typeof message !== 'string' || !message.trim()) {
-      throw new BadRequestException('studentId, subjectId, topicId and message are required');
-    }
+    const { studentId, subjectId, topicId, message } = data;
 
     const student = await this.prisma.student.findUnique({ where: { id: studentId } });
     if (!student) throw new NotFoundException('Student not found');
@@ -40,6 +32,13 @@ export class MentorService {
     if (topic.subjectId !== subjectId) {
       throw new BadRequestException('Topic does not belong to the specified subject');
     }
+
+    const resources = await this.prisma.academicResource.findMany({
+      where: { topicId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, title: true, description: true, url: true },
+    });
+    const sources = resources;
 
     const progress = await this.prisma.studentTopicProgress.findUnique({
       where: {
@@ -67,14 +66,22 @@ export class MentorService {
     });
 
     let answer: string;
-    if (process.env.LLM_API_KEY) {
+    const providerName = process.env.LLM_PROVIDER ?? 'openai';
+    let provider: LlmProvider;
+    try {
+      provider = createLlmProvider(providerName);
+    } catch {
+      throw new BadGatewayException('The configured LLM provider is not supported');
+    }
+    if (providerName.toLowerCase() === 'mock' || providerName.toLowerCase() === 'ollama' || process.env.LLM_API_KEY) {
       try {
-        answer = await this.requestLlmAnswer({
+        answer = await provider.generateAnswer({
           topic: topic.name,
           subject: subject.name,
           student: student.name,
           level,
           question: message.trim(),
+          sources: sources.map(({ title, description, url }) => ({ title, description, url })),
         });
       } catch {
         throw new BadGatewayException('The LLM provider is unavailable');
@@ -97,51 +104,7 @@ export class MentorService {
         topic: topic.name,
         level,
       },
+      sources,
     };
-  }
-
-  private async requestLlmAnswer(context: {
-    topic: string;
-    subject: string;
-    student: string;
-    level: string;
-    question: string;
-  }): Promise<string> {
-    const endpoint = process.env.LLM_API_URL ?? 'https://api.openai.com/v1/chat/completions';
-    const model = process.env.LLM_MODEL ?? 'gpt-4o-mini';
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.LLM_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: 'Eres un mentor académico. Responde en español, con claridad y adaptado al nivel indicado. No inventes datos del estudiante.',
-          },
-          {
-            role: 'user',
-            content: `Estudiante: ${context.student}. Asignatura: ${context.subject}. Tema: ${context.topic}. Nivel: ${context.level}. Pregunta: ${context.question}`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`LLM provider returned HTTP ${response.status}`);
-    }
-
-    const payload = await response.json() as {
-      choices?: Array<{ message?: { content?: unknown } }>;
-    };
-    const answer = payload.choices?.[0]?.message?.content;
-    if (typeof answer !== 'string' || !answer.trim()) {
-      throw new Error('LLM provider returned an empty or invalid answer');
-    }
-    return answer.trim();
   }
 }

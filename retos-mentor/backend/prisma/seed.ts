@@ -173,6 +173,22 @@ async function main() {
         level: ProgressLevel.BEGINNER,
       },
     });
+    await prisma.academicResource.createMany({
+      data: [
+        {
+          topicId: joinTopic.id,
+          title: 'PostgreSQL: consultas JOIN',
+          description: 'Documentación oficial sobre las operaciones JOIN en SQL.',
+          url: 'https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-JOIN',
+        },
+        {
+          topicId: joinTopic.id,
+          title: 'PostgreSQL Tutorial: joins',
+          description: 'Ejemplos introductorios de INNER, LEFT y RIGHT JOIN.',
+          url: 'https://www.postgresqltutorial.com/postgresql-tutorial/postgresql-joins/',
+        },
+      ],
+    });
   }
 
   console.log('Seed ejecutado correctamente con los nuevos estudiantes.');

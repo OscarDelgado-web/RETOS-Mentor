@@ -1,18 +1,41 @@
-export interface Career { id: number; name: string; }
-export interface Subject { id: number; careerId: number; name: string; }
-export interface Topic { id: number; subjectId: number; name: string; }
-
-export interface AcademicResourceSource {
+export interface Career {
   id: number;
-  title: string;
-  description: string | null;
-  url: string;
+  name: string;
 }
 
-export interface MentorMessageResponse { 
-  answer: string; 
-  context: { topic: string; level: string; };
-  sources: AcademicResourceSource[];
-  extensionType?: 'text' | 'code_snippet' | 'concept_card';
-  extensionData?: any; 
+export interface Subject {
+  id: number;
+  careerId: number;
+  name: string;
 }
+
+export interface Topic {
+  id: number;
+  subjectId: number;
+  name: string;
+}
+
+export interface StudentDto {
+  id: number;
+  name: string;
+  careerId: number;
+}
+
+export interface SendMentorMessageBackendPayload {
+  studentId: number;
+  subjectId: number;
+  topicId: number;
+  message: string;
+}
+
+export interface MentorMessageResponse {
+  answer: string;
+  context: {
+    topic: string;
+    level: string;
+  };
+  extensionType?: 'text' | 'code_snippet' | 'concept_card';
+  extensionData?: any;
+}
+
+export * from './index';

@@ -39,8 +39,9 @@ export const HeroContextSelector: React.FC<ContextSelectorProps> = ({
           
           {/* Selector de Carrera */}
           <div className="flex-1 text-left">
-            <label className="block text-sm font-medium text-slate-200 mb-2">1. Carrera</label>
+            <label htmlFor="career-select-field" className="block text-sm font-medium text-slate-200 mb-2">1. Carrera</label>
             <select 
+              id="career-select-field"
               className="w-full bg-slate-800/50 border border-slate-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50 transition-all"
               value={selectedCareer}
               onChange={(e) => onCareerChange(Number(e.target.value))}
@@ -53,8 +54,9 @@ export const HeroContextSelector: React.FC<ContextSelectorProps> = ({
 
           {/* Selector de Asignatura */}
           <div className="flex-1 text-left">
-            <label className="block text-sm font-medium text-slate-200 mb-2">2. Asignatura</label>
+            <label htmlFor="subject-select-field" className="block text-sm font-medium text-slate-200 mb-2">2. Asignatura</label>
             <select 
+              id="subject-select-field"
               className="w-full bg-slate-800/50 border border-slate-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50 transition-all"
               value={selectedSubject}
               onChange={(e) => onSubjectChange(Number(e.target.value))}
@@ -67,8 +69,9 @@ export const HeroContextSelector: React.FC<ContextSelectorProps> = ({
 
           {/* Selector de Tema */}
           <div className="flex-1 text-left">
-            <label className="block text-sm font-medium text-slate-200 mb-2">3. Tema</label>
+            <label htmlFor="topic-select-field" className="block text-sm font-medium text-slate-200 mb-2">3. Tema</label>
             <select 
+              id="topic-select-field"
               className="w-full bg-slate-800/50 border border-slate-600 text-white rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50 transition-all"
               value={selectedTopic}
               onChange={(e) => onTopicChange(Number(e.target.value))}

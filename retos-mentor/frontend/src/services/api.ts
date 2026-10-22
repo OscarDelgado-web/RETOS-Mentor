@@ -1,10 +1,9 @@
-import { CAREERS_CATALOG } from '../data/careersCatalog';
 import type {
   Career,
   Subject,
   Topic,
   StudentDto,
-  SendMentorMessageBackendPayload,
+  MentorMessageRequest,
   MentorMessageResponse,
 } from '../types/api';
 
@@ -20,7 +19,7 @@ class ApiService {
   private async request<T>(
     endpoint: string,
     options?: RequestInit,
-    timeoutMs = 6000
+    timeoutMs = 18000
   ): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -38,17 +37,48 @@ class ApiService {
 
       clearTimeout(timer);
 
-      if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status} en ${endpoint}: ${response.statusText}`
-        );
+      const isSuccess = response.status === 200 || response.status === 201 || response.ok;
+
+      if (!isSuccess) {
+        let errorMsg = `HTTP ${response.status} en ${endpoint}: ${response.statusText}`;
+        let details: any = null;
+        try {
+          details = await response.json();
+          if (details?.message) {
+            errorMsg = Array.isArray(details.message)
+              ? details.message.join(', ')
+              : String(details.message);
+          }
+        } catch {
+          // No es JSON, mantener errorMsg estándar
+        }
+        const httpError: any = new Error(errorMsg);
+        httpError.status = response.status;
+        httpError.statusText = response.statusText;
+        httpError.details = details;
+        throw httpError;
       }
 
       this.isOnlineCache = true;
       return (await response.json()) as T;
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(timer);
       this.isOnlineCache = false;
+
+      if (err.name === 'AbortError') {
+        const timeoutError: any = new Error(
+          `Tiempo de espera agotado al conectar con el servidor (timeout de ${timeoutMs / 1000}s)`
+        );
+        timeoutError.status = 502;
+        throw timeoutError;
+      }
+
+      // Si no tiene status, se trata de una falla de red / servidor detenido
+      if (!err.status) {
+        err.status = 503;
+        err.message = err.message || 'El servidor backend está detenido o no responde.';
+      }
+
       throw err;
     }
   }
@@ -58,19 +88,7 @@ class ApiService {
   // ==========================================
 
   async getCareers(): Promise<Career[]> {
-    try {
-      const careers = await this.request<Career[]>('/careers');
-      if (Array.isArray(careers) && careers.length > 0) {
-        return careers;
-      }
-      throw new Error('Lista de carreras vacía');
-    } catch {
-      // Fallback local garantizado desde el catálogo oficial
-      return CAREERS_CATALOG.map((c, idx) => ({
-        id: c.backendId || idx + 1,
-        name: c.nombre,
-      }));
-    }
+    return await this.request<Career[]>('/careers', undefined, 6000);
   }
 
   // ==========================================
@@ -78,25 +96,7 @@ class ApiService {
   // ==========================================
 
   async getSubjects(careerId: number): Promise<Subject[]> {
-    try {
-      const subjects = await this.request<Subject[]>(`/subjects?careerId=${careerId}`);
-      if (Array.isArray(subjects) && subjects.length > 0) {
-        return subjects;
-      }
-      throw new Error('Lista de materias vacía');
-    } catch {
-      // Fallback local desde el catálogo oficial
-      const career =
-        CAREERS_CATALOG.find((c) => c.backendId === careerId) ||
-        CAREERS_CATALOG[careerId - 1] ||
-        CAREERS_CATALOG[0];
-
-      return career.materias.map((materiaNombre, idx) => ({
-        id: careerId * 100 + (idx + 1),
-        careerId,
-        name: materiaNombre,
-      }));
-    }
+    return await this.request<Subject[]>(`/subjects?careerId=${careerId}`, undefined, 6000);
   }
 
   // ==========================================
@@ -104,21 +104,7 @@ class ApiService {
   // ==========================================
 
   async getTopics(subjectId: number): Promise<Topic[]> {
-    try {
-      const topics = await this.request<Topic[]>(`/topics?subjectId=${subjectId}`);
-      if (Array.isArray(topics) && topics.length > 0) {
-        return topics;
-      }
-      throw new Error('Lista de temas vacía');
-    } catch {
-      // Temas contextuales por defecto
-      return [
-        { id: subjectId * 10 + 1, subjectId, name: 'Fundamentos y Conceptos Clave' },
-        { id: subjectId * 10 + 2, subjectId, name: 'Estructuras y Modelado' },
-        { id: subjectId * 10 + 3, subjectId, name: 'Técnicas de Aplicación Práctica' },
-        { id: subjectId * 10 + 4, subjectId, name: 'Resolución de Problemas y Casos de Estudio' },
-      ];
-    }
+    return await this.request<Topic[]>(`/topics?subjectId=${subjectId}`, undefined, 6000);
   }
 
   // ==========================================
@@ -136,46 +122,42 @@ class ApiService {
 
   // ==========================================
   // 5. MENTOR CHAT (POST /mentor/messages)
-  // Envía estrictamente el DTO del backend:
-  // { studentId, subjectId, topicId, message }
+  // Sin mock silencioso (BUG-002 y QA-08)
+  // Propaga errores HTTP reales hacia la UI
   // ==========================================
 
   async sendMentorMessage(
-    payload: SendMentorMessageBackendPayload,
-    modelName?: string
+    payload: MentorMessageRequest
   ): Promise<MentorMessageResponse> {
-    // Sanitización rigurosa de DTO para evitar 400 Bad Request
-    const cleanPayload: SendMentorMessageBackendPayload = {
-      studentId: Math.max(1, Number(payload.studentId) || 1),
-      subjectId: Math.max(1, Number(payload.subjectId) || 1),
-      topicId: Math.max(1, Number(payload.topicId) || 1),
-      message: String(payload.message || '').trim(),
+    const studentId = Number(payload.studentId);
+    const subjectId = Number(payload.subjectId);
+    const topicId = Number(payload.topicId);
+    const message = String(payload.message || '').trim();
+
+    if (!studentId || !subjectId || !topicId || !message) {
+      const validationError: any = new Error(
+        'studentId, subjectId, topicId y message son requeridos.'
+      );
+      validationError.status = 400;
+      throw validationError;
+    }
+
+    const cleanPayload: MentorMessageRequest = {
+      studentId,
+      subjectId,
+      topicId,
+      message,
+      ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
     };
 
-    try {
-      const result = await this.request<MentorMessageResponse>('/mentor/messages', {
+    return await this.request<MentorMessageResponse>(
+      '/mentor/messages',
+      {
         method: 'POST',
         body: JSON.stringify(cleanPayload),
-      });
-      return result;
-    } catch (error) {
-      console.warn(
-        'El backend NestJS no respondió o devolvió error en /mentor/messages. Generando respuesta contextual segura:',
-        error
-      );
-
-      // Degradación elegante: respuesta estructurada inteligente
-      const selectedModelNotice = modelName ? `[${modelName}] ` : '';
-      const fallbackAnswer = `${selectedModelNotice}He analizado tu consulta sobre este tema. Para abordar "${cleanPayload.message}", considera los principios fundamentales de la materia, la estructura técnica recomendada y la aplicación de buenas prácticas en la industria. ¿Deseas que analicemos un ejemplo práctico paso a paso?`;
-
-      return {
-        answer: fallbackAnswer,
-        context: {
-          topic: 'Contexto Académico',
-          level: 'EN_PROGRESO',
-        },
-      };
-    }
+      },
+      18000
+    );
   }
 
   get isOnline(): boolean | null {

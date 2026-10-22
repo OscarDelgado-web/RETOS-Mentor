@@ -7,16 +7,13 @@ import React, {
   useMemo,
 } from 'react';
 import { useAuth } from './AuthContext';
-import { useMaterias } from './MateriasContext';
 import { useToast } from './ToastContext';
 import { api } from '../services/api';
-import { findRelevantChunks } from '../services/documentProcessor';
 import type {
   ChatSession,
   ChatMessage,
   AIModelId,
   AIModelOption,
-  SourceCitation,
 } from '../types';
 
 const CHAT_SESSIONS_STORAGE_KEY = 'retos_mentor_chat_sessions';
@@ -50,16 +47,36 @@ export const AI_MODELS: AIModelOption[] = [
   },
 ];
 
+export interface ChatErrorState {
+  message: string;
+  status?: number;
+  raw?: string;
+}
+
 interface ChatContextType {
   sessions: ChatSession[];
   activeSession: ChatSession | null;
   activeSessionId: string | null;
   setActiveSessionId: (id: string) => void;
-  createNewSession: (title?: string, initialMateriaId?: string) => string;
+  createNewSession: (
+    title?: string,
+    initialCareerId?: number,
+    initialSubjectId?: number,
+    initialTopicId?: number
+  ) => string;
   deleteSession: (id: string) => void;
   renameSession: (id: string, newTitle: string) => void;
   changeSessionModel: (modelId: AIModelId) => void;
+  setSessionAcademicContext: (
+    careerId: number | '',
+    subjectId?: number | '',
+    topicId?: number | ''
+  ) => void;
   sendMessage: (text: string) => Promise<void>;
+  retryLastMessage: () => Promise<void>;
+  lastError: ChatErrorState | null;
+  clearLastError: () => void;
+  rateMessage: (messageId: string, rating: 'helpful' | 'unhelpful') => void;
   isStreaming: boolean;
   streamingMessageId: string | null;
   streamingStatusText: string;
@@ -75,7 +92,6 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { session: studentSession } = useAuth();
-  const { documentosActivosParaChat, materias, selectedMateria } = useMaterias();
   const { success, warning, info } = useToast();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -85,6 +101,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [streamingStatusText, setStreamingStatusText] = useState('');
   const [replyToMessage, setReplyToMessage] = useState<ChatMessage | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
+  const [lastError, setLastError] = useState<ChatErrorState | null>(null);
 
   // 1. Cargar sesiones desde localStorage
   useEffect(() => {
@@ -93,8 +110,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (stored) {
         const parsed = JSON.parse(stored) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setSessions(parsed);
-          setActiveSessionId(parsed[0].id);
+          // Sanitizar sesiones para garantizar que no existan IDs obsoletos 101 o 1001
+          const sanitized = parsed.map((s) => ({
+            ...s,
+            careerBackendId: s.careerBackendId || (s.carreraId === 'desarrollo-software' ? 1 : 1),
+            subjectId: s.subjectId && s.subjectId <= 8 ? s.subjectId : 1,
+            topicId: s.topicId && s.topicId <= 24 ? s.topicId : 1,
+          }));
+          setSessions(sanitized);
+          setActiveSessionId(sanitized[0].id);
           return;
         }
       }
@@ -102,14 +126,15 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.warn('Error leyendo sesiones de chat:', err);
     }
 
-    // Si no existen sesiones, crear una inicial
+    // Si no existen sesiones, crear una inicial con IDs reales (1..4, 1..8, 1..24)
     const initialSession: ChatSession = {
       id: `session-${Date.now()}`,
       title: 'Sesión de Consulta Académica',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       carreraId: studentSession?.careerId || 'desarrollo-software',
-      materiaId: selectedMateria?.id,
+      careerBackendId: studentSession?.careerBackendId || 1,
+      subjectId: 1,
       topicId: 1,
       modelId: 'gemini-2.5-flash',
       isModelLocked: false,
@@ -118,7 +143,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: 'welcome-msg',
           sender: 'assistant',
           content:
-            '¡Hola! Soy tu Mentor Académico Virtual. Puedes consultarme dudas teóricas, ejercicios prácticos o análisis de los documentos que hayas cargado en el módulo **Materias**.',
+            '¡Hola! Soy tu Mentor Académico Virtual. Selecciona tu carrera, asignatura y tema para comenzar a resolver dudas o practicar ejercicios.',
           timestamp: new Date().toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
@@ -147,9 +172,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return sessions.find((s) => s.id === activeSessionId) || sessions[0] || null;
   }, [sessions, activeSessionId]);
 
-  // Crear nueva sesión
+  // Actualizar contexto académico en la sesión activa
+  const setSessionAcademicContext = useCallback(
+    (careerId: number | '', subjectId?: number | '', topicId?: number | '') => {
+      if (!activeSession) return;
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeSession.id) return s;
+          return {
+            ...s,
+            careerBackendId: typeof careerId === 'number' ? careerId : undefined,
+            subjectId: typeof subjectId === 'number' ? subjectId : undefined,
+            topicId: typeof topicId === 'number' ? topicId : undefined,
+            updatedAt: new Date().toISOString(),
+          };
+        })
+      );
+    },
+    [activeSession]
+  );
+
+  // Crear nueva sesión con contexto opcional
   const createNewSession = useCallback(
-    (title?: string, initialMateriaId?: string): string => {
+    (
+      title?: string,
+      initialCareerId?: number,
+      initialSubjectId?: number,
+      initialTopicId?: number
+    ): string => {
       const newId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
       const newSession: ChatSession = {
         id: newId,
@@ -157,8 +207,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         carreraId: studentSession?.careerId || 'desarrollo-software',
-        materiaId: initialMateriaId || selectedMateria?.id,
-        topicId: 1,
+        careerBackendId:
+          initialCareerId ?? activeSession?.careerBackendId ?? studentSession?.careerBackendId ?? 1,
+        subjectId: initialSubjectId ?? activeSession?.subjectId ?? 1,
+        topicId: initialTopicId ?? activeSession?.topicId ?? 1,
         modelId: 'gemini-2.5-flash',
         isModelLocked: false,
         messages: [
@@ -166,7 +218,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             id: `msg-welcome-${Date.now()}`,
             sender: 'assistant',
             content:
-              'Nueva sesión iniciada. Selecciona tu modelo de IA favorito antes de comenzar o haz una pregunta directa para consultar a tu Mentor.',
+              'Nueva sesión iniciada. Configura tu contexto académico si lo requieres o escribe directamente tu consulta.',
             timestamp: new Date().toLocaleTimeString('es-ES', {
               hour: '2-digit',
               minute: '2-digit',
@@ -178,10 +230,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSessions((prev) => [newSession, ...prev]);
       setActiveSessionId(newId);
       setReplyToMessage(null);
+      setLastError(null);
       success('Nueva sesión creada.', 'Mentor Chat');
       return newId;
     },
-    [sessions.length, studentSession?.careerId, selectedMateria?.id, success]
+    [
+      sessions.length,
+      studentSession?.careerId,
+      studentSession?.careerBackendId,
+      activeSession?.careerBackendId,
+      activeSession?.subjectId,
+      activeSession?.topicId,
+      success,
+    ]
   );
 
   // Eliminar sesión
@@ -209,7 +270,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const trimmed = newTitle.trim();
     if (!trimmed) return;
     setSessions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, title: trimmed, updatedAt: new Date().toISOString() } : s))
+      prev.map((s) =>
+        s.id === id ? { ...s, title: trimmed, updatedAt: new Date().toISOString() } : s
+      )
     );
   }, []);
 
@@ -237,11 +300,75 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [activeSession, warning, success]
   );
 
-  // Enviar mensaje con streaming y citas de fuentes
+  // Valoración de mensajes de asistente (P1: AC-09)
+  const rateMessage = useCallback(
+    (messageId: string, rating: 'helpful' | 'unhelpful') => {
+      if (!activeSession) return;
+      setSessions((prev) =>
+        prev.map((s) => {
+          if (s.id !== activeSession.id) return s;
+          const currentRating = s.feedback?.[messageId];
+          const newRating = currentRating === rating ? undefined : rating;
+          const nextFeedback = { ...(s.feedback || {}) };
+          if (newRating) {
+            nextFeedback[messageId] = newRating;
+          } else {
+            delete nextFeedback[messageId];
+          }
+          return {
+            ...s,
+            feedback: nextFeedback,
+          };
+        })
+      );
+    },
+    [activeSession]
+  );
+
+  const clearLastError = useCallback(() => {
+    setLastError(null);
+  }, []);
+
+  // Enviar mensaje con propagación de errores y continuidad de sesión
   const sendMessage = useCallback(
     async (text: string) => {
       const cleanText = text.trim();
       if (!cleanText || !activeSession || isStreaming) return;
+
+      // Validación de 2,000 caracteres
+      if (cleanText.length > 2000) {
+        setLastError({
+          message: 'El mensaje supera el límite máximo de 2,000 caracteres permitido.',
+          status: 400,
+          raw: cleanText,
+        });
+        return;
+      }
+
+      const studentId = studentSession?.id ?? 1;
+      const subjectId = Number(activeSession.subjectId);
+      const topicId = Number(activeSession.topicId);
+
+      if (!studentId || !subjectId || !topicId) {
+        setLastError({
+          message: 'Por favor selecciona una Asignatura y un Tema válidos antes de enviar tu consulta.',
+          status: 400,
+          raw: cleanText,
+        });
+        return;
+      }
+
+      if (subjectId < 1 || subjectId > 8 || topicId < 1 || topicId > 24) {
+        setLastError({
+          message: 'Contexto académico inválido. Selecciona una materia (1..8) y tema (1..24) reales.',
+          status: 400,
+          raw: cleanText,
+        });
+        return;
+      }
+
+      // Limpiar error previo al reintentar o enviar
+      setLastError(null);
 
       const userMsgId = `msg-user-${Date.now()}`;
       const nowFormatted = new Date().toLocaleTimeString('es-ES', {
@@ -256,7 +383,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         timestamp: nowFormatted,
         replyToId: replyToMessage?.id,
         replyToSnippet: replyToMessage
-          ? replyToMessage.content.substring(0, 80) + (replyToMessage.content.length > 80 ? '...' : '')
+          ? replyToMessage.content.substring(0, 80) +
+            (replyToMessage.content.length > 80 ? '...' : '')
           : undefined,
       };
 
@@ -273,7 +401,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? {
                 ...s,
                 title: sessionTitle,
-                isModelLocked: true, // Bloqueo de modelo tras el primer mensaje
+                isModelLocked: true,
                 messages: updatedMessages,
                 updatedAt: new Date().toISOString(),
               }
@@ -283,60 +411,26 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setReplyToMessage(null);
       setIsStreaming(true);
-      setStreamingStatusText('El Mentor está analizando tus documentos y contexto...');
+      setStreamingStatusText('El Mentor Académico está analizando tu consulta...');
 
       try {
-        // 2. Buscar fragmentos relevantes en documentos activos
-        const relevantResults = findRelevantChunks(cleanText, documentosActivosParaChat, 3);
-        const sourceCitations: SourceCitation[] = relevantResults.map((r, idx) => ({
-          id: `citation-${idx}-${r.chunk.id}`,
-          documentoId: r.documentId,
-          documentoNombre: r.documentName,
-          materiaNombre: r.materiaNombre,
-          fragmento: r.chunk.text,
-          similitud: r.score,
-        }));
+        // 2. Llamada real al backend NestJS con sessionId para continuidad (2+ turnos)
+        const apiResponse = await api.sendMentorMessage({
+          studentId,
+          subjectId,
+          topicId,
+          message: cleanText,
+          sessionId: activeSession.id,
+        });
 
-        if (sourceCitations.length > 0) {
-          setStreamingStatusText(
-            `Analizando ${sourceCitations.length} fragmento(s) en ${sourceCitations[0].documentoNombre}...`
-          );
+        const fullAnswer = (apiResponse?.answer || '').trim();
+        if (!fullAnswer) {
+          throw new Error('El mentor devolvió una respuesta vacía.');
         }
 
-        // 3. Preparar payload seguro para el backend NestJS (DTO estricto: studentId, subjectId, topicId, message)
-        const studentId = studentSession?.id || 1;
-        const currentMateria =
-          materias.find((m) => m.id === activeSession.materiaId) || materias[0] || selectedMateria;
-        const subjectId = currentMateria?.backendId || 101;
-        const topicId = activeSession.topicId || 1001;
+        const sources = apiResponse.sources;
 
-        // Contexto enriquecido solo si hay citas activas
-        let messageToSend = cleanText;
-        if (sourceCitations.length > 0) {
-          const docSnippet = sourceCitations
-            .map((c) => `[Fuente: ${c.documentoNombre}]: ${c.fragmento.substring(0, 300)}...`)
-            .join('\n');
-          messageToSend = `${cleanText}\n\n[Contexto Documental]:\n${docSnippet}`;
-        }
-
-        const modelConfig = AI_MODELS.find((m) => m.id === activeSession.modelId);
-
-        // 4. Llamada al adaptador HTTP seguro
-        const apiResponse = await api.sendMentorMessage(
-          {
-            studentId,
-            subjectId,
-            topicId,
-            message: messageToSend,
-          },
-          modelConfig?.name
-        );
-
-        const fullAnswer =
-          apiResponse?.answer ||
-          'He procesado tu consulta. Revisa los puntos anteriores y házmelo saber si requieres más detalles.';
-
-        // 5. Efecto de streaming progresivo en el cliente
+        // 3. Efecto de streaming progresivo en el cliente
         const assistantMsgId = `msg-assistant-${Date.now()}`;
         setStreamingMessageId(assistantMsgId);
 
@@ -348,10 +442,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             hour: '2-digit',
             minute: '2-digit',
           }),
-          citas: sourceCitations.length > 0 ? sourceCitations : undefined,
+          sources,
         };
 
-        // Agregar mensaje asistente vacío
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSession.id
@@ -363,14 +456,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           )
         );
 
-        // Streaming paulatino por palabras
         const words = fullAnswer.split(' ');
         let currentStreamedText = '';
 
         for (let i = 0; i < words.length; i++) {
           currentStreamedText += (i === 0 ? '' : ' ') + words[i];
-
-          // Actualizar mensaje con el fragmento acumulado
           const textChunk = currentStreamedText;
           setSessions((prev) =>
             prev.map((s) => {
@@ -378,24 +468,33 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return {
                 ...s,
                 messages: s.messages.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: textChunk } : m
+                  m.id === assistantMsgId
+                    ? { ...m, content: textChunk, sources }
+                    : m
                 ),
               };
             })
           );
 
-          // Pequeña pausa para fluidez visual tipo máquina de escribir
           if (words.length > 15) {
             await new Promise((res) => setTimeout(res, 20));
           }
         }
       } catch (err: any) {
         console.error('Error en envío de mensaje:', err);
+        const status = err.status || (err.name === 'AbortError' ? 502 : 503);
+        const errorText = err.message || 'Error de conexión con el backend.';
+
+        setLastError({
+          message: errorText,
+          status,
+          raw: cleanText,
+        });
+
         const errorMsg: ChatMessage = {
           id: `msg-err-${Date.now()}`,
           sender: 'assistant',
-          content:
-            'Hubo un problema al procesar la respuesta. Por favor intenta reformular tu pregunta.',
+          content: `⚠️ No se pudo procesar tu respuesta (${errorText}). Puedes pulsar "Reintentar" para volver a enviarla.`,
           timestamp: new Date().toLocaleTimeString('es-ES', {
             hour: '2-digit',
             minute: '2-digit',
@@ -415,16 +514,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStreamingStatusText('');
       }
     },
-    [
-      activeSession,
-      isStreaming,
-      replyToMessage,
-      documentosActivosParaChat,
-      studentSession?.id,
-      materias,
-      selectedMateria,
-    ]
+    [activeSession, isStreaming, replyToMessage, studentSession?.id]
   );
+
+  // Reintentar último mensaje fallido (BUG-005 y QA-09)
+  const retryLastMessage = useCallback(async () => {
+    if (!lastError?.raw) return;
+    const textToRetry = lastError.raw;
+    setLastError(null);
+    await sendMessage(textToRetry);
+  }, [lastError, sendMessage]);
 
   // Filtrado de sesiones por búsqueda
   const filteredSessions = useMemo(() => {
@@ -454,6 +553,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let md = `# Conversación de Mentoría: ${targetSession.title}\n\n`;
       md += `- **Fecha de Creación**: ${new Date(targetSession.createdAt).toLocaleString('es-ES')}\n`;
       md += `- **Carrera**: ${studentSession?.careerName || targetSession.carreraId}\n`;
+      md += `- **Asignatura (ID)**: ${targetSession.subjectId || 'N/A'}\n`;
+      md += `- **Tema (ID)**: ${targetSession.topicId || 'N/A'}\n`;
       md += `- **Modelo de IA**: ${modelObj?.name || targetSession.modelId} (${modelObj?.provider || 'IA'})\n`;
       md += `- **Total Mensajes**: ${targetSession.messages.length}\n\n`;
       md += `---\n\n`;
@@ -465,14 +566,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           md += `> En respuesta a: "${msg.replyToSnippet}"\n\n`;
         }
         md += `${msg.content}\n\n`;
-
-        if (msg.citas && msg.citas.length > 0) {
-          md += `**Fuentes y Documentos Citados:**\n`;
-          for (const c of msg.citas) {
-            md += `- 📄 **${c.documentoNombre}** (${c.materiaNombre}): _"${c.fragmento.substring(0, 200)}..."_\n`;
-          }
-          md += `\n`;
-        }
         md += `---\n\n`;
       }
 
@@ -504,7 +597,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteSession,
         renameSession,
         changeSessionModel,
+        setSessionAcademicContext,
         sendMessage,
+        retryLastMessage,
+        lastError,
+        clearLastError,
+        rateMessage,
         isStreaming,
         streamingMessageId,
         streamingStatusText,
@@ -528,3 +626,4 @@ export const useChat = () => {
   }
   return context;
 };
+

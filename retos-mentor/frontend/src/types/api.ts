@@ -21,16 +21,30 @@ export interface StudentDto {
   careerId: number;
 }
 
-export interface SendMentorMessageBackendPayload {
+export interface MentorSource {
+  id: number | string;
+  title: string;
+  description: string;
+  url: string;
+}
+
+export type Source = MentorSource;
+
+export interface MentorMessageRequest {
   studentId: number;
   subjectId: number;
   topicId: number;
   message: string;
+  sessionId?: string | number;
 }
+
+export type SendMentorMessageBackendPayload = MentorMessageRequest;
 
 export interface MentorMessageResponse {
   answer: string;
-  context: {
+  sources?: MentorSource[];
+  sessionId?: number | string;
+  context?: {
     topic: string;
     level: string;
   };

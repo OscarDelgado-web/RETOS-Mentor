@@ -4,7 +4,6 @@ import {
   UploadCloud,
   FileText,
   Trash2,
-  Eye,
   CheckSquare,
   Square,
   AlertCircle,
@@ -16,7 +15,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useMaterias } from '../context/MateriasContext';
-import { DocumentPreviewModal } from '../components/DocumentPreviewModal';
 import type { MateriaItem } from '../types';
 
 export const MateriasPage: React.FC = () => {
@@ -32,9 +30,6 @@ export const MateriasPage: React.FC = () => {
     deleteMultipleDocuments,
     activateAllDocuments,
     deactivateAllDocuments,
-    previewDocument,
-    openPreview,
-    closePreview,
     isLoadingMaterias,
   } = useMaterias();
 
@@ -489,16 +484,7 @@ export const MateriasPage: React.FC = () => {
                               )}
                             </button>
 
-                            {/* Vista Previa */}
-                            <button
-                              type="button"
-                              onClick={() => openPreview(doc)}
-                              disabled={!isReady}
-                              title="Ver contenido extraído y fragmentos"
-                              className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-xl transition-colors disabled:opacity-40"
-                            >
-                              <Eye size={16} />
-                            </button>
+
 
                             {/* Eliminar */}
                             <button
@@ -540,12 +526,7 @@ export const MateriasPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal de Vista Previa de Documento */}
-      <DocumentPreviewModal
-        document={previewDocument}
-        onClose={closePreview}
-        onToggleActive={toggleDocumentActive}
-      />
+      {/* Visor de documentos locales desactivado/oculto para la demostración (OCULTAR_VISOR_Y_RAG_LOCAL) */}
     </div>
   );
 };

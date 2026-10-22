@@ -1,3 +1,5 @@
+import type { MentorSource } from './api';
+
 export type AIModelId =
   | 'gemini-2.5-flash'
   | 'llama-3.3-70b'
@@ -76,11 +78,14 @@ export interface SourceCitation {
   similitud?: number;
 }
 
+export type Message = ChatMessage;
+
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   content: string;
   timestamp: string;
+  sources?: MentorSource[];
   citas?: SourceCitation[];
   replyToId?: string;
   replyToSnippet?: string;
@@ -92,11 +97,14 @@ export interface ChatSession {
   createdAt: string;
   updatedAt: string;
   carreraId: string;
+  careerBackendId?: number;
   materiaId?: string;
+  subjectId?: number;
   topicId?: number;
   modelId: AIModelId;
   isModelLocked: boolean;
   messages: ChatMessage[];
+  feedback?: Record<string, 'helpful' | 'unhelpful'>;
 }
 
 export interface ToastNotification {

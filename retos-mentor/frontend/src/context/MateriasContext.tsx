@@ -103,7 +103,7 @@ export const MateriasProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         return {
           id: `${careerCatalog.id}-mat-${index + 1}`,
-          backendId: foundBackend?.id || (session.careerBackendId ? session.careerBackendId * 100 + (index + 1) : index + 1),
+          backendId: foundBackend?.id,
           name: nombreMateria,
           careerId: careerCatalog.id,
           codigo: `MAT-${(index + 1).toString().padStart(2, '0')}`,

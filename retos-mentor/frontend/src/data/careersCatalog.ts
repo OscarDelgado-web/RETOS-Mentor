@@ -69,7 +69,7 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
   },
   {
     id: 'operaciones-mantenimiento-industrial',
-    backendId: 2,
+    backendId: 3,
     nombre: 'Técnico Superior en Operaciones y Mantenimiento Industrial',
     jornada: [
       'Campus 1: Diurna',
@@ -112,7 +112,7 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
   },
   {
     id: 'mecatronica',
-    backendId: 3,
+    backendId: 4,
     nombre: 'Técnico Superior en Mecatrónica',
     jornada: ['Campus 1: Presencial'],
     objetivos: {
@@ -155,7 +155,7 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
   },
   {
     id: 'logistica',
-    backendId: 4,
+    backendId: 2,
     nombre: 'Técnico Superior en Logística',
     jornada: ['Campus 1: Presencial (Diurna y Nocturna)'],
     objetivos: {

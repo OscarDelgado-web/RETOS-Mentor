@@ -44,7 +44,10 @@ Response:
   "context": {
     "topic": "JOIN",
     "level": "BEGINNER"
-  }
+  },
+  "sources": [
+    {"id": 1, "title": "PostgreSQL: consultas JOIN", "description": "Documentación oficial", "url": "https://www.postgresql.org/docs/current/queries-table-expressions.html#QUERIES-JOIN"}
+  ]
 }
 ```
 

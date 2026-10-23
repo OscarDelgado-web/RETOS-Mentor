@@ -31,6 +31,14 @@
 $ npm install
 ```
 
+## Mentor academic resources and LLM
+
+`AcademicResource` associates a URL and description with a topic. Active resources are returned as `sources` by `POST /mentor/messages`; the Prisma seed adds example sources for JOIN.
+
+Configure the mentor with `LLM_PROVIDER=openai` (default) or `LLM_PROVIDER=ollama`. OpenAI uses `LLM_API_KEY`, `LLM_MODEL` and optionally `LLM_API_URL`; Ollama uses `LLM_MODEL` and optionally `LLM_API_URL` (default: `http://localhost:11434/api/chat`). OpenAI keeps the local fallback response when no API key is configured. Provider failures return HTTP 502.
+
+Apply the database change to an existing database with `npx prisma migrate deploy`, or synchronize a development database with `npx prisma db push`.
+
 ## Compile and run the project
 
 ```bash

@@ -5,6 +5,7 @@
 Career(id, name)
 Subject(id, careerId, name)
 Topic(id, subjectId, name)
+AcademicResource(id, topicId, title, description, url, isActive, createdAt)
 Student(id, name, careerId)
 StudentTopicProgress(studentId, topicId, level)
 MentorSession(id, studentId, createdAt)
@@ -19,6 +20,7 @@ MentorMessage(id, sessionId, role, content, createdAt)
 Career
   └── Subject
         └── Topic
+              └── AcademicResource
 
 Student
   ├── Career

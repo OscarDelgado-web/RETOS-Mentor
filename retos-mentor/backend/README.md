@@ -35,7 +35,9 @@ $ npm install
 
 `AcademicResource` associates a URL and description with a topic. Active resources are returned as `sources` by `POST /mentor/messages`; the Prisma seed adds example sources for JOIN.
 
-Configure the mentor with `LLM_PROVIDER=openai` (default) or `LLM_PROVIDER=ollama`. OpenAI uses `LLM_API_KEY`, `LLM_MODEL` and optionally `LLM_API_URL`; Ollama uses `LLM_MODEL` and optionally `LLM_API_URL` (default: `http://localhost:11434/api/chat`). OpenAI keeps the local fallback response when no API key is configured. Provider failures return HTTP 502.
+Configure the mentor with `LLM_PROVIDER=openai` (default), `LLM_PROVIDER=ollama` or `LLM_PROVIDER=gemini`. OpenAI uses `LLM_API_KEY`, `LLM_MODEL` and optionally `LLM_API_URL`; Ollama uses `LLM_MODEL` and optionally `LLM_API_URL` (default: `http://localhost:11434/api/chat`); Gemini uses `GEMINI_API_KEY` (or `LLM_API_KEY`) and calls the official REST `v1beta` endpoint with `gemini-3.8-flash`.
+
+When the configured provider's required API key is missing, the API returns HTTP 503. Provider availability or configuration failures return HTTP 503, OpenAI/Ollama timeouts after 15 seconds and Gemini timeouts after 60 seconds return HTTP 502, and unexpected server errors return HTTP 500.
 
 Apply the database change to an existing database with `npx prisma migrate deploy`, or synchronize a development database with `npx prisma db push`.
 

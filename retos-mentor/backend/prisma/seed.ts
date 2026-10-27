@@ -163,6 +163,13 @@ async function main() {
     },
   });
 
+  await prisma.student.create({
+    data: {
+      name: 'Estudiante Demo Logistica',
+      careerId: logistica.id,
+    },
+  });
+
   // 7. Progreso inicial del estudiante demo
   const joinTopic = await prisma.topic.findFirst({ where: { name: 'JOIN' } });
   if (joinTopic) {

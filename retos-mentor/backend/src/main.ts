@@ -17,6 +17,7 @@ if (process.env.NODE_USE_ENV_PROXY === '1' || hasProxyConfiguration) {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+  app.enableCors({ origin: process.env.CORS_ORIGIN ?? true, credentials: true });
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 void bootstrap();

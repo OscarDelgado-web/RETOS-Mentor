@@ -7,7 +7,13 @@ import type {
   MentorMessageResponse,
 } from '../types/api';
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+
+export interface ApiHttpError extends Error {
+  status?: number;
+  statusText?: string;
+  details?: unknown;
+}
 
 /**
  * Cliente HTTP seguro con fallback local para el Monorepositorio RETOS-Mentor.
@@ -41,18 +47,19 @@ class ApiService {
 
       if (!isSuccess) {
         let errorMsg = `HTTP ${response.status} en ${endpoint}: ${response.statusText}`;
-        let details: any = null;
+        let details: unknown = null;
         try {
-          details = await response.json();
-          if (details?.message) {
-            errorMsg = Array.isArray(details.message)
-              ? details.message.join(', ')
-              : String(details.message);
+          const jsonBody = (await response.json()) as { message?: string | string[] };
+          details = jsonBody;
+          if (jsonBody?.message) {
+            errorMsg = Array.isArray(jsonBody.message)
+              ? jsonBody.message.join(', ')
+              : String(jsonBody.message);
           }
         } catch {
           // No es JSON, mantener errorMsg estándar
         }
-        const httpError: any = new Error(errorMsg);
+        const httpError = new Error(errorMsg) as ApiHttpError;
         httpError.status = response.status;
         httpError.statusText = response.statusText;
         httpError.details = details;
@@ -61,25 +68,26 @@ class ApiService {
 
       this.isOnlineCache = true;
       return (await response.json()) as T;
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(timer);
       this.isOnlineCache = false;
 
-      if (err.name === 'AbortError') {
-        const timeoutError: any = new Error(
+      const httpErr = err as ApiHttpError;
+      if (httpErr.name === 'AbortError') {
+        const timeoutError = new Error(
           `Tiempo de espera agotado al conectar con el servidor (timeout de ${timeoutMs / 1000}s)`
-        );
+        ) as ApiHttpError;
         timeoutError.status = 502;
         throw timeoutError;
       }
 
       // Si no tiene status, se trata de una falla de red / servidor detenido
-      if (!err.status) {
-        err.status = 503;
-        err.message = err.message || 'El servidor backend está detenido o no responde.';
+      if (!httpErr.status) {
+        httpErr.status = 503;
+        httpErr.message = httpErr.message || 'El servidor backend está detenido o no responde.';
       }
 
-      throw err;
+      throw httpErr;
     }
   }
 
@@ -135,9 +143,9 @@ class ApiService {
     const message = String(payload.message || '').trim();
 
     if (!studentId || !subjectId || !topicId || !message) {
-      const validationError: any = new Error(
+      const validationError = new Error(
         'studentId, subjectId, topicId y message son requeridos.'
-      );
+      ) as ApiHttpError;
       validationError.status = 400;
       throw validationError;
     }

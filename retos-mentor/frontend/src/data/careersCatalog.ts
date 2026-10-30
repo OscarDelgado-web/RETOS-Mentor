@@ -55,6 +55,8 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
       'Arquitecto de Software',
     ],
     materias: [
+      'Bases de Datos',
+      'Arquitectura Web',
       'Planes de Negocio y Emprendedurismo',
       'Diseño de Bases de Datos II',
       'Gestión de la Seguridad Informática',
@@ -99,6 +101,8 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
       'Supervisor de Proyectos de Montaje de Maquinaria Industrial',
     ],
     materias: [
+      'Mantenimiento Predictivo',
+      'Sistemas Hidráulicos',
       'Planes de Negocio y Emprendedurismo',
       'Ejecución de Técnicas de Mantenimiento Preventivo',
       'Aplicación de Soldadura y Fabricación de Piezas con Máquinas Herramientas y CNC',
@@ -143,6 +147,8 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
       'Gerente de Producción',
     ],
     materias: [
+      'Automatización Industrial',
+      'Robótica Aplicada',
       'Planes de Negocio y Emprendedurismo',
       'Electrohidráulica Digital',
       'Inglés',
@@ -185,6 +191,8 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
       'Supervisor de Operaciones Logísticas',
     ],
     materias: [
+      'Cadena de Suministro',
+      'Comercio Internacional',
       'Gestión de Compras y Abastecimiento',
       'Operaciones Logísticas, Distribución de Carga y Transporte',
       'Inglés',
@@ -198,3 +206,10 @@ export const CAREERS_CATALOG: CareerCatalog[] = [
     ],
   },
 ];
+
+export const CAREER_DEFAULT_STUDENT: Record<number, { id: number; name: string }> = {
+  1: { id: 1, name: 'Student Demo' },
+  2: { id: 5, name: 'Estudiante Demo Logistica' },
+  3: { id: 4, name: 'Denys Rosa' },
+  4: { id: 3, name: 'Óscar Osmín' },
+};

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { CAREERS_CATALOG } from '../data/careersCatalog';
+import { CAREERS_CATALOG, CAREER_DEFAULT_STUDENT } from '../data/careersCatalog';
 
 export const LoginPage: React.FC = () => {
   const [studentName, setStudentName] = useState('Estudiante Piloto');
@@ -118,7 +118,14 @@ export const LoginPage: React.FC = () => {
               <select
                 id="career-select"
                 value={selectedCareerId}
-                onChange={(e) => setSelectedCareerId(e.target.value)}
+                onChange={(e) => {
+                  const newCareerId = e.target.value;
+                  setSelectedCareerId(newCareerId);
+                  const found = CAREERS_CATALOG.find((c) => c.id === newCareerId);
+                  if (found?.backendId && CAREER_DEFAULT_STUDENT[found.backendId]) {
+                    setStudentIdInput(String(CAREER_DEFAULT_STUDENT[found.backendId].id));
+                  }
+                }}
                 className="w-full bg-zinc-900/80 border border-zinc-700/80 rounded-2xl px-4 py-3 text-xs sm:text-sm text-white focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all cursor-pointer"
               >
                 {CAREERS_CATALOG.map((career) => (

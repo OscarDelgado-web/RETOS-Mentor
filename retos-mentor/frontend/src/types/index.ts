@@ -105,6 +105,7 @@ export interface ChatSession {
   isModelLocked: boolean;
   messages: ChatMessage[];
   feedback?: Record<string, 'helpful' | 'unhelpful'>;
+  backendSessionId?: number;
 }
 
 export interface ToastNotification {

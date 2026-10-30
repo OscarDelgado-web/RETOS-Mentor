@@ -49,7 +49,7 @@ export interface MentorMessageResponse {
     level: string;
   };
   extensionType?: 'text' | 'code_snippet' | 'concept_card';
-  extensionData?: any;
+  extensionData?: unknown;
 }
 
 export * from './index';

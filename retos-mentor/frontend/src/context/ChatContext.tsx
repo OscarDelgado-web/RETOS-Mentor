@@ -94,67 +94,78 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { session: studentSession } = useAuth();
   const { success, warning, info } = useToast();
 
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [streamingStatusText, setStreamingStatusText] = useState('');
-  const [replyToMessage, setReplyToMessage] = useState<ChatMessage | null>(null);
-  const [searchFilter, setSearchFilter] = useState('');
-  const [lastError, setLastError] = useState<ChatErrorState | null>(null);
-
-  // 1. Cargar sesiones desde localStorage
-  useEffect(() => {
+  // 1. Inicializar sesiones desde localStorage usando estado perezoso
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const stored = localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as ChatSession[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Sanitizar sesiones para garantizar que no existan IDs obsoletos 101 o 1001
-          const sanitized = parsed.map((s) => ({
+          return parsed.map((s) => ({
             ...s,
-            careerBackendId: s.careerBackendId || (s.carreraId === 'desarrollo-software' ? 1 : 1),
-            subjectId: s.subjectId && s.subjectId <= 8 ? s.subjectId : 1,
-            topicId: s.topicId && s.topicId <= 24 ? s.topicId : 1,
+            careerBackendId: s.careerBackendId ?? 1,
+            subjectId: typeof s.subjectId === 'number' && Number.isInteger(s.subjectId) && s.subjectId > 0 ? s.subjectId : 1,
+            topicId: typeof s.topicId === 'number' && Number.isInteger(s.topicId) && s.topicId > 0 ? s.topicId : 1,
+            backendSessionId:
+              typeof s.backendSessionId === 'number' && Number.isInteger(s.backendSessionId) && s.backendSessionId > 0
+                ? s.backendSessionId
+                : undefined,
           }));
-          setSessions(sanitized);
-          setActiveSessionId(sanitized[0].id);
-          return;
         }
       }
     } catch (err) {
       console.warn('Error leyendo sesiones de chat:', err);
     }
 
-    // Si no existen sesiones, crear una inicial con IDs reales (1..4, 1..8, 1..24)
-    const initialSession: ChatSession = {
-      id: `session-${Date.now()}`,
-      title: 'Sesión de Consulta Académica',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      carreraId: studentSession?.careerId || 'desarrollo-software',
-      careerBackendId: studentSession?.careerBackendId || 1,
-      subjectId: 1,
-      topicId: 1,
-      modelId: 'gemini-2.5-flash',
-      isModelLocked: false,
-      messages: [
-        {
-          id: 'welcome-msg',
-          sender: 'assistant',
-          content:
-            '¡Hola! Soy tu Mentor Académico Virtual. Selecciona tu carrera, asignatura y tema para comenzar a resolver dudas o practicar ejercicios.',
-          timestamp: new Date().toLocaleTimeString('es-ES', {
-            hour: '2-digit',
-            minute: '2-digit',
-          }),
-        },
-      ],
-    };
+    return [
+      {
+        id: `session-${Date.now()}`,
+        title: 'Sesión de Consulta Académica',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        carreraId: studentSession?.careerId || 'desarrollo-software',
+        careerBackendId: studentSession?.careerBackendId || 1,
+        subjectId: 1,
+        topicId: 1,
+        modelId: 'gemini-2.5-flash',
+        isModelLocked: false,
+        messages: [
+          {
+            id: 'welcome-msg',
+            sender: 'assistant',
+            content:
+              '¡Hola! Soy tu Mentor Académico Virtual. Selecciona tu carrera, asignatura y tema para comenzar a resolver dudas o practicar ejercicios.',
+            timestamp: new Date().toLocaleTimeString('es-ES', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+          },
+        ],
+      },
+    ];
+  });
 
-    setSessions([initialSession]);
-    setActiveSessionId(initialSession.id);
-  }, []);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
+    try {
+      const stored = localStorage.getItem(CHAT_SESSIONS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as ChatSession[];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed[0].id;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [streamingStatusText, setStreamingStatusText] = useState('');
+  const [replyToMessage, setReplyToMessage] = useState<ChatMessage | null>(null);
+  const [searchFilter, setSearchFilter] = useState('');
+  const [lastError, setLastError] = useState<ChatErrorState | null>(null);
 
   // 2. Persistir sesiones en localStorage
   useEffect(() => {
@@ -358,9 +369,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      if (subjectId < 1 || subjectId > 8 || topicId < 1 || topicId > 24) {
+      if (!Number.isInteger(subjectId) || subjectId <= 0 || !Number.isInteger(topicId) || topicId <= 0) {
         setLastError({
-          message: 'Contexto académico inválido. Selecciona una materia (1..8) y tema (1..24) reales.',
+          message: 'Contexto académico inválido. Selecciona una asignatura y tema válidos.',
           status: 400,
           raw: cleanText,
         });
@@ -413,6 +424,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsStreaming(true);
       setStreamingStatusText('El Mentor Académico está analizando tu consulta...');
 
+      const sessionIdToSend =
+        typeof activeSession.backendSessionId === 'number' &&
+        Number.isInteger(activeSession.backendSessionId) &&
+        activeSession.backendSessionId > 0
+          ? activeSession.backendSessionId
+          : undefined;
+
       try {
         // 2. Llamada real al backend NestJS con sessionId para continuidad (2+ turnos)
         const apiResponse = await api.sendMentorMessage({
@@ -420,7 +438,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           subjectId,
           topicId,
           message: cleanText,
-          sessionId: activeSession.id,
+          sessionId: sessionIdToSend,
         });
 
         const fullAnswer = (apiResponse?.answer || '').trim();
@@ -429,6 +447,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         const sources = apiResponse.sources;
+        const serverSessionId =
+          typeof apiResponse?.sessionId === 'number' &&
+          Number.isInteger(apiResponse.sessionId) &&
+          apiResponse.sessionId > 0
+            ? apiResponse.sessionId
+            : activeSession.backendSessionId;
 
         // 3. Efecto de streaming progresivo en el cliente
         const assistantMsgId = `msg-assistant-${Date.now()}`;
@@ -450,6 +474,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             s.id === activeSession.id
               ? {
                   ...s,
+                  backendSessionId: serverSessionId,
                   messages: [...s.messages, initialAssistantMsg],
                 }
               : s
@@ -480,10 +505,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await new Promise((res) => setTimeout(res, 20));
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error en envío de mensaje:', err);
-        const status = err.status || (err.name === 'AbortError' ? 502 : 503);
-        const errorText = err.message || 'Error de conexión con el backend.';
+        const httpErr = err as { status?: number; name?: string; message?: string } | null;
+        const status = httpErr?.status || (httpErr?.name === 'AbortError' ? 502 : 503);
+        const errorText = httpErr?.message || 'Error de conexión con el backend.';
 
         setLastError({
           message: errorText,

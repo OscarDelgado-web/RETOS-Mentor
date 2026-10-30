@@ -28,9 +28,22 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useChat, AI_MODELS } from '../context/ChatContext';
 import { HeroContextSelector } from '../components/HeroContextSelector';
+import { MarkdownRenderer } from '../components/MarkdownRenderer';
 import { api } from '../services/api';
 import type { AIModelId } from '../types';
 import type { Career, Subject, Topic } from '../types/api';
+
+function getSafeUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.href;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export const MentorChatPage: React.FC = () => {
   const { session } = useAuth();
@@ -69,15 +82,43 @@ export const MentorChatPage: React.FC = () => {
   const [careers, setCareers] = useState<Career[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [isLoadingCatalog, setIsLoadingCatalog] = useState(false);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+  const [showScrollBottomBtn, setShowScrollBottomBtn] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+
+  // Función controlada para desplazamiento suave al final
+  const scrollToBottom = (smooth = true) => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    if (typeof container.scrollTo === 'function') {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto',
+      });
+    } else {
+      container.scrollTop = container.scrollHeight;
+    }
+    isNearBottomRef.current = true;
+    setShowScrollBottomBtn(false);
+  };
+
+  // Detector de posición de scroll: si el usuario sube más de 120px, no auto-scrollear
+  const handleScroll = () => {
+    const container = chatContainerRef.current;
+    if (!container) return;
+    const threshold = 120;
+    const isNear = container.scrollHeight - container.scrollTop - container.clientHeight <= threshold;
+    isNearBottomRef.current = isNear;
+    setShowScrollBottomBtn(!isNear);
+  };
 
   // 1. Cargar carreras al montar
   useEffect(() => {
     let isMounted = true;
-    setIsLoadingCatalog(true);
     api.getCareers()
       .then((data) => {
         if (isMounted) {
@@ -102,23 +143,24 @@ export const MentorChatPage: React.FC = () => {
 
   // 2. Cargar materias cuando cambia la carrera seleccionada
   useEffect(() => {
+    let isMounted = true;
     if (!selectedCareer) {
-      setSubjects([]);
-      setTopics([]);
+      Promise.resolve().then(() => {
+        if (isMounted) {
+          setSubjects([]);
+          setTopics([]);
+        }
+      });
       return;
     }
-    let isMounted = true;
-    setIsLoadingCatalog(true);
     api.getSubjects(Number(selectedCareer))
       .then((data) => {
         if (isMounted) {
           setSubjects(data);
-          setIsLoadingCatalog(false);
         }
       })
       .catch((err) => {
         console.error('Error cargando materias:', err);
-        if (isMounted) setIsLoadingCatalog(false);
       });
     return () => {
       isMounted = false;
@@ -127,34 +169,41 @@ export const MentorChatPage: React.FC = () => {
 
   // 3. Cargar temas cuando cambia la materia seleccionada
   useEffect(() => {
+    let isMounted = true;
     if (!selectedSubject) {
-      setTopics([]);
+      Promise.resolve().then(() => {
+        if (isMounted) {
+          setTopics([]);
+        }
+      });
       return;
     }
-    let isMounted = true;
-    setIsLoadingCatalog(true);
     api.getTopics(Number(selectedSubject))
       .then((data) => {
         if (isMounted) {
           setTopics(data);
-          setIsLoadingCatalog(false);
         }
       })
       .catch((err) => {
         console.error('Error cargando temas:', err);
-        if (isMounted) setIsLoadingCatalog(false);
       });
     return () => {
       isMounted = false;
     };
   }, [selectedSubject]);
 
-  // Auto-scroll al final del chat cuando llegan mensajes
+  // Auto-scroll inteligente: solo baja automáticamente si el usuario ya estaba al final del chat
   useEffect(() => {
-    if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      scrollToBottom(true);
     }
   }, [activeSession?.messages, isStreaming]);
+
+  // Al cambiar o seleccionar otra sesión, desplazarse al final de esa conversación
+  useEffect(() => {
+    isNearBottomRef.current = true;
+    scrollToBottom(false);
+  }, [activeSessionId]);
 
   // Manejadores en cascada
   const handleCareerChange = (id: number) => {
@@ -177,6 +226,9 @@ export const MentorChatPage: React.FC = () => {
     if (!inputText.trim() || isStreaming || inputText.length > 2000 || !selectedTopic) return;
     const msg = inputText;
     setInputText('');
+    // Al enviar mensaje, forzar el scroll al final para que el alumno vea su consulta
+    isNearBottomRef.current = true;
+    scrollToBottom(true);
     await sendMessage(msg);
     textareaRef.current?.focus();
   };
@@ -203,13 +255,13 @@ export const MentorChatPage: React.FC = () => {
   const currentTopic = topics.find((t) => t.id === selectedTopic);
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row h-[calc(100vh-60px)] min-h-0 bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
+    <div className="flex-1 flex flex-col lg:flex-row h-full min-h-0 bg-[#09090b] text-zinc-100 overflow-hidden font-sans">
       {/* ======================================================== */}
       {/* 1. PANEL LATERAL DE SESIONES (HISTORIAL MULTISESIÓN)     */}
       {/* ======================================================== */}
       <aside
         aria-label="Panel de sesiones previas"
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-72 sm:w-80 bg-[#0d0d10] border-r border-zinc-800/80 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
+        className={`fixed lg:static inset-y-0 left-0 z-30 w-72 sm:w-80 h-full min-h-0 bg-[#0d0d10] border-r border-zinc-800/80 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
           isSessionDrawerOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -379,9 +431,9 @@ export const MentorChatPage: React.FC = () => {
       {/* ======================================================== */}
       {/* 2. ÁREA PRINCIPAL DE CONVERSACIÓN                        */}
       {/* ======================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden relative">
         {/* Barra Superior del Chat */}
-        <header className="px-4 py-3 bg-[#0d0d10] border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <header className="px-4 py-3 bg-[#0d0d10] border-b border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 shrink-0 relative z-20">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -470,7 +522,7 @@ export const MentorChatPage: React.FC = () => {
         {/* SELECTOR EN CASCADA REINTEGRADO (BUG-001)               */}
         {/* ======================================================== */}
         {showContextSelector && (
-          <div className="p-3 sm:p-4 bg-zinc-950/60 border-b border-zinc-800/80 shrink-0 animate-in fade-in">
+          <div className="p-3 sm:p-4 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80 shrink-0 animate-in fade-in relative z-10">
             <HeroContextSelector
               careers={careers}
               subjects={subjects}
@@ -523,8 +575,12 @@ export const MentorChatPage: React.FC = () => {
           </div>
         )}
 
-        {/* Flujo de Mensajes */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        {/* Flujo de Mensajes (Único contenedor con scroll de la conversación) */}
+        <div
+          ref={chatContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6 z-0 scroll-smooth"
+        >
           {/* Mensaje de guía si no hay tema seleccionado */}
           {!selectedTopic && (
             <div className="max-w-xl mx-auto p-4 rounded-3xl bg-linear-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/30 text-xs flex items-start gap-3">
@@ -570,38 +626,55 @@ export const MentorChatPage: React.FC = () => {
                   )}
 
                   <div
-                    className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                    className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed ${
                       isUser
-                        ? 'bg-emerald-600 text-white rounded-tr-xs shadow-lg shadow-emerald-950/20'
-                        : 'bg-[#141418] border border-zinc-800/80 text-zinc-200 rounded-tl-xs shadow-md'
+                        ? 'bg-emerald-600 text-white rounded-tr-xs shadow-lg shadow-emerald-950/20 whitespace-pre-wrap break-words'
+                        : 'bg-[#141418] border border-zinc-800/80 text-zinc-200 rounded-tl-xs shadow-md break-words'
                     }`}
                   >
-                    <div>{msg.content}</div>
+                    {isUser ? (
+                      <div>{msg.content}</div>
+                    ) : (
+                      <MarkdownRenderer content={msg.content} />
+                    )}
 
                     {/* Sección de Fuentes Académicas (AC-06 / AC-08) */}
                     {!isUser && msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-zinc-800/80 space-y-2">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
-                          <BookOpen size={13} />
-                          <span>Fuentes Académicas</span>
+                      <div className="mt-4 pt-3.5 border-t border-zinc-800/80 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                            <BookOpen size={14} className="text-emerald-400 shrink-0" />
+                            <span>Fuentes Académicas</span>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 font-medium">
+                            {msg.sources.length} {msg.sources.length === 1 ? 'fuente' : 'fuentes'}
+                          </span>
                         </div>
                         <div className="grid gap-2">
                           {msg.sources.map((source, sIdx) => (
                             <div
                               key={source.id || sIdx}
-                              className="p-2.5 rounded-2xl bg-zinc-900/90 border border-zinc-800/80 text-xs flex flex-col gap-1"
+                              className="group/card p-3 rounded-2xl bg-zinc-900/90 border border-zinc-800 hover:border-emerald-500/40 hover:bg-zinc-900/95 transition-all text-xs flex flex-col gap-1.5 shadow-sm"
                             >
                               <div className="flex items-start justify-between gap-2">
-                                <span className="font-semibold text-zinc-100">{source.title}</span>
-                                <a
-                                  href={source.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-medium shrink-0 underline underline-offset-2"
-                                >
-                                  <span>Consultar</span>
-                                  <ExternalLink size={11} />
-                                </a>
+                                <span className="font-semibold text-zinc-100 group-hover/card:text-emerald-300 transition-colors">
+                                  {source.title}
+                                </span>
+                                {getSafeUrl(source.url) ? (
+                                  <a
+                                    href={getSafeUrl(source.url)!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold border border-emerald-500/20 transition-colors shrink-0"
+                                  >
+                                    <span>Consultar</span>
+                                    <ExternalLink size={11} />
+                                  </a>
+                                ) : (
+                                  <span className="text-[11px] px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 font-medium shrink-0">
+                                    Referencia
+                                  </span>
+                                )}
                               </div>
                               {source.description && (
                                 <p className="text-[11px] text-zinc-400 leading-relaxed font-normal">
@@ -680,8 +753,21 @@ export const MentorChatPage: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Área de Entrada de Mensaje */}
-        <div className="p-3 sm:p-4 bg-[#0d0d10] border-t border-zinc-800/80 space-y-2 shrink-0">
+        {/* Botón flotante para bajar al último mensaje cuando el usuario está leyendo arriba */}
+        {showScrollBottomBtn && (
+          <button
+            type="button"
+            onClick={() => scrollToBottom(true)}
+            aria-label="Bajar al último mensaje"
+            className="absolute bottom-28 right-6 z-30 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-zinc-900/95 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 shadow-2xl backdrop-blur-md text-xs font-semibold transition-all cursor-pointer animate-in fade-in group"
+          >
+            <ChevronDown size={14} className="group-hover:translate-y-0.5 transition-transform" />
+            <span>Últimos mensajes</span>
+          </button>
+        )}
+
+        {/* Área de Entrada de Mensaje Fija (Sticky) con Z-Index superior */}
+        <div className="sticky bottom-0 z-20 p-3 sm:p-4 bg-[#0d0d10]/95 backdrop-blur-md border-t border-zinc-800/90 shadow-[0_-8px_30px_rgba(0,0,0,0.5)] space-y-2 shrink-0">
           {/* Indicador de respuesta citada */}
           {replyToMessage && (
             <div className="flex items-center justify-between p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300">

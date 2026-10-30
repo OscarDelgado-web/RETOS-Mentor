@@ -25,8 +25,16 @@ export class SendMentorMessageValidationPipe implements PipeTransform<unknown, S
         throw new BadRequestException(field + ' must be a positive integer');
       }
     }
-    if (body.sessionId !== undefined && (!Number.isInteger(body.sessionId) || Number(body.sessionId) <= 0)) {
-      throw new BadRequestException('sessionId must be a positive integer');
+    if (body.sessionId !== undefined && body.sessionId !== null) {
+      if (typeof body.sessionId === 'string' && body.sessionId.startsWith('session-')) {
+        delete body.sessionId;
+      } else {
+        const parsed = Number(body.sessionId);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          throw new BadRequestException('sessionId must be a positive integer');
+        }
+        body.sessionId = parsed;
+      }
     }
     if (typeof body.message !== 'string' || !body.message.trim()) {
       throw new BadRequestException('message must be a non-empty string');

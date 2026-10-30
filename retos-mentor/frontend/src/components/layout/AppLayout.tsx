@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, Search, X, BookOpen, MessageSquare, Plus } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { useAuth } from '../../context/AuthContext';
@@ -16,6 +16,8 @@ export const AppLayout: React.FC = () => {
   const { sessions, setActiveSessionId, createNewSession } = useChat();
   const { materias, setSelectedMateria } = useMaterias();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isChatRoute = location.pathname.startsWith('/mentor');
 
   // Escucha de atajos de teclado globales
   useEffect(() => {
@@ -58,7 +60,7 @@ export const AppLayout: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-zinc-100 flex flex-col md:flex-row antialiased selection:bg-emerald-500 selection:text-white">
+    <div className="h-screen bg-[#09090b] text-zinc-100 flex flex-col md:flex-row antialiased selection:bg-emerald-500 selection:text-white overflow-hidden">
       {/* Barra Lateral */}
       <Sidebar
         isCollapsed={isCollapsed}
@@ -68,9 +70,9 @@ export const AppLayout: React.FC = () => {
       />
 
       {/* Contenido Principal */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden">
         {/* Cabecera Móvil y Barra Superior */}
-        <header className="sticky top-0 z-30 bg-[#0d0d0f]/80 backdrop-blur-md border-b border-zinc-800/80 px-4 py-3 flex items-center justify-between">
+        <header className="shrink-0 z-30 bg-[#0d0d0f]/80 backdrop-blur-md border-b border-zinc-800/80 px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -108,7 +110,7 @@ export const AppLayout: React.FC = () => {
         </header>
 
         {/* Vista Renderizada por la Ruta Activa */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        <main className={`flex-1 flex flex-col min-w-0 min-h-0 ${isChatRoute ? 'overflow-hidden' : 'overflow-y-auto'}`}>
           <Outlet />
         </main>
       </div>

@@ -4,7 +4,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SendMentorMessageDto } from './send-mentor-message.dto';
@@ -40,19 +39,19 @@ export class MentorService {
       throw new BadRequestException('Topic does not belong to the specified subject');
     }
 
-    const providerName = (process.env.LLM_PROVIDER ?? 'openai').toLowerCase();
+    const providerName = (process.env.LLM_PROVIDER ?? 'openai').split('#')[0].trim().toLowerCase();
     if (providerName === 'openai' && !process.env.LLM_API_KEY?.trim()) {
-      throw new ServiceUnavailableException('LLM_API_KEY is required when LLM_PROVIDER=openai');
+      throw new BadGatewayException('LLM_API_KEY is required when LLM_PROVIDER=openai');
     }
     if (providerName === 'gemini' && !process.env.GEMINI_API_KEY?.trim() && !process.env.LLM_API_KEY?.trim()) {
-      throw new ServiceUnavailableException('GEMINI_API_KEY is required when LLM_PROVIDER=gemini');
+      throw new BadGatewayException('GEMINI_API_KEY is required when LLM_PROVIDER=gemini');
     }
 
     let provider: LlmProvider;
     try {
       provider = createLlmProvider(providerName);
     } catch {
-      throw new ServiceUnavailableException('The configured LLM provider is not supported');
+      throw new BadGatewayException('The configured LLM provider is not supported');
     }
 
     let session: { id: number } | null = null;
@@ -72,7 +71,7 @@ export class MentorService {
         take: 20,
         select: { role: true, content: true },
       });
-      history = previousMessages.reverse().map((entry) => ({
+      history = previousMessages.reverse().map((entry: { role: string; content: string }) => ({
         role: entry.role === 'ASSISTANT' ? 'assistant' : 'user',
         content: entry.content,
       }));
@@ -98,7 +97,13 @@ export class MentorService {
         question: cleanMessage,
         modelId,
         history,
-        sources: resources.map(({ title, description, url }) => ({ title, description, url })),
+        sources: resources.map(
+          ({ title, description, url }: { title: string; description: string | null; url: string }) => ({
+            title,
+            description,
+            url,
+          })
+        ),
       });
     } catch (error) {
       if (error instanceof Error && error.name === 'TimeoutError') {
@@ -110,7 +115,7 @@ export class MentorService {
         ? error.message.replace(/https?:\/\/\S+/g, '[provider URL]').slice(0, 200)
         : 'Unknown provider error';
       this.logger.error(`LLM provider "${providerName}" failed: ${safeDetail}`);
-      throw new ServiceUnavailableException('The LLM provider is unavailable');
+      throw new BadGatewayException('The LLM provider is unavailable');
     }
 
     const activeSession = session ?? await this.prisma.mentorSession.create({

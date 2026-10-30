@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 async function main() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE TABLE "Career", "Subject", "Topic", "Student", "StudentTopicProgress", "MentorSession", "MentorMessage" RESTART IDENTITY CASCADE;`
+    `TRUNCATE TABLE "Career", "Subject", "Topic", "AcademicResource", "Student", "StudentTopicProgress", "MentorSession", "MentorMessage" RESTART IDENTITY CASCADE;`
   );
 
   // 1. Carreras exactas requeridas

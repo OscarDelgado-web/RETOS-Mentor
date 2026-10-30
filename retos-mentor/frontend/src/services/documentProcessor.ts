@@ -32,6 +32,14 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
+function sanitizeDocForLocalStorage(doc: DocumentoItem): DocumentoItem {
+  return {
+    ...doc,
+    contenidoTextoExtraido: doc.contenidoTextoExtraido.substring(0, 300),
+    fragmentos: doc.fragmentos.slice(0, 2),
+  };
+}
+
 export async function saveDocumentToStorage(doc: DocumentoItem): Promise<void> {
   try {
     const db = await openDatabase();
@@ -47,7 +55,7 @@ export async function saveDocumentToStorage(doc: DocumentoItem): Promise<void> {
     try {
       const stored = getDocumentsFromLocalStorage();
       const filtered = stored.filter((d) => d.id !== doc.id);
-      filtered.push(doc);
+      filtered.push(sanitizeDocForLocalStorage(doc));
       localStorage.setItem('retos_mentor_docs_backup', JSON.stringify(filtered));
     } catch (localErr) {
       console.error('Error en fallback localStorage:', localErr);
@@ -136,7 +144,7 @@ export async function extractTextFromFile(
   onProgress?.(50);
 
   const uint8 = new Uint8Array(arrayBuffer);
-  let extracted = '';
+  let extracted: string;
 
   if (fileType === 'pdf') {
     extracted = extractTextFromPdfBuffer(uint8);

@@ -49,8 +49,35 @@ export const MateriasProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { session } = useAuth();
   const { success, warning, error, info } = useToast();
 
-  const [materias, setMaterias] = useState<MateriaItem[]>([]);
-  const [selectedMateria, setSelectedMateria] = useState<MateriaItem | null>(null);
+  const [materias, setMaterias] = useState<MateriaItem[]>(() => {
+    const careerCatalog =
+      CAREERS_CATALOG.find((c) => c.id === session?.careerId) || CAREERS_CATALOG[0];
+    return careerCatalog.materias.map((nombreMateria, index) => ({
+      id: `${careerCatalog.id}-mat-${index + 1}`,
+      backendId: index < 2 ? index + 1 : undefined,
+      name: nombreMateria,
+      careerId: careerCatalog.id,
+      codigo: `MAT-${(index + 1).toString().padStart(2, '0')}`,
+      ciclo: index < 5 ? 'Ciclo I' : 'Ciclo II',
+      creditos: 4,
+      descripcion: `Módulo formativo correspondiente a ${nombreMateria} para ${careerCatalog.nombre}.`,
+    }));
+  });
+  const [selectedMateria, setSelectedMateria] = useState<MateriaItem | null>(() => {
+    const careerCatalog =
+      CAREERS_CATALOG.find((c) => c.id === session?.careerId) || CAREERS_CATALOG[0];
+    const initialName = careerCatalog.materias[0] || 'Materia';
+    return {
+      id: `${careerCatalog.id}-mat-1`,
+      backendId: 1,
+      name: initialName,
+      careerId: careerCatalog.id,
+      codigo: 'MAT-01',
+      ciclo: 'Ciclo I',
+      creditos: 4,
+      descripcion: `Módulo formativo correspondiente a ${initialName} para ${careerCatalog.nombre}.`,
+    };
+  });
   const [documentos, setDocumentos] = useState<DocumentoItem[]>([]);
   const [isLoadingMaterias, setIsLoadingMaterias] = useState(false);
   const [isLoadingDocs, setIsLoadingDocs] = useState(true);
@@ -85,7 +112,6 @@ export const MateriasProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       CAREERS_CATALOG.find((c) => c.id === session.careerId) || CAREERS_CATALOG[0];
 
     try {
-      // Intentar obtener subjects del backend si careerBackendId existe
       let backendSubjects: { id: number; name: string }[] = [];
       if (session.careerBackendId) {
         try {
@@ -95,35 +121,55 @@ export const MateriasProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      // Fusionar catálogo oficial con datos del backend sin perder ninguna materia del catálogo
-      const mergedList: MateriaItem[] = careerCatalog.materias.map((nombreMateria, index) => {
-        const foundBackend = backendSubjects.find(
-          (b) => b.name.toLowerCase().trim() === nombreMateria.toLowerCase().trim()
-        );
+      const mergedList: MateriaItem[] = [];
+      if (backendSubjects.length > 0) {
+        backendSubjects.forEach((bs, index) => {
+          mergedList.push({
+            id: `${careerCatalog.id}-mat-${bs.id}`,
+            backendId: bs.id,
+            name: bs.name,
+            careerId: careerCatalog.id,
+            codigo: `MAT-${(index + 1).toString().padStart(2, '0')}`,
+            ciclo: index < 5 ? 'Ciclo I' : 'Ciclo II',
+            creditos: 4,
+            descripcion: `Módulo formativo correspondiente a ${bs.name} para ${careerCatalog.nombre}.`,
+          });
+        });
+      }
 
-        return {
-          id: `${careerCatalog.id}-mat-${index + 1}`,
-          backendId: foundBackend?.id,
-          name: nombreMateria,
-          careerId: careerCatalog.id,
-          codigo: `MAT-${(index + 1).toString().padStart(2, '0')}`,
-          ciclo: index < 5 ? 'Ciclo I' : 'Ciclo II',
-          creditos: 4,
-          descripcion: `Módulo formativo correspondiente a ${nombreMateria} para ${careerCatalog.nombre}.`,
-        };
+      careerCatalog.materias.forEach((nombreMateria, index) => {
+        if (!mergedList.some((m) => m.name.toLowerCase().trim() === nombreMateria.toLowerCase().trim())) {
+          mergedList.push({
+            id: `${careerCatalog.id}-catalog-${index + 1}`,
+            backendId: undefined,
+            name: nombreMateria,
+            careerId: careerCatalog.id,
+            codigo: `CAT-${(index + 1).toString().padStart(2, '0')}`,
+            ciclo: index < 5 ? 'Ciclo I' : 'Ciclo II',
+            creditos: 3,
+            descripcion: `Módulo formativo correspondiente a ${nombreMateria} para ${careerCatalog.nombre}.`,
+          });
+        }
       });
 
       setMaterias(mergedList);
-      if (mergedList.length > 0 && !selectedMateria) {
-        setSelectedMateria(mergedList[0]);
-      }
+      setSelectedMateria((prev) => (prev ? prev : mergedList[0] || null));
     } finally {
       setIsLoadingMaterias(false);
     }
-  }, [session?.careerId, session?.careerBackendId, selectedMateria]);
+  }, [session?.careerId, session?.careerBackendId]);
 
   useEffect(() => {
-    refreshMaterias();
+    let isMounted = true;
+    const fetchAsync = async () => {
+      if (isMounted) {
+        await refreshMaterias();
+      }
+    };
+    void fetchAsync();
+    return () => {
+      isMounted = false;
+    };
   }, [refreshMaterias]);
 
   // Documentos filtrados por materia
@@ -207,16 +253,17 @@ export const MateriasProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           'Documento Listo'
         );
         return true;
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error('Error procesando archivo:', err);
+        const errMsg = err instanceof Error ? err.message : 'Error durante el procesamiento del archivo.';
         const docError: DocumentoItem = {
           ...nuevoDoc,
           estado: 'error',
           progreso: 0,
-          errorMensaje: err?.message || 'Error durante el procesamiento del archivo.',
+          errorMensaje: errMsg,
         };
         setDocumentos((prev) => prev.map((d) => (d.id === docId ? docError : d)));
-        error(`No se pudo procesar "${file.name}": ${err?.message || 'Error desconocido'}`);
+        error(`No se pudo procesar "${file.name}": ${errMsg}`);
         return false;
       }
     },

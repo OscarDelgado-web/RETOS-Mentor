@@ -130,8 +130,7 @@ describe('MentorChatPage Component (BUG-001, BUG-005, QA-09, AC-08)', () => {
   });
 
   it('muestra alerta de error visible con botón de reintentar ante fallos de conexión', async () => {
-    const error: any = new Error('El servidor backend está detenido o no responde.');
-    error.status = 503;
+    const error = Object.assign(new Error('El servidor backend está detenido o no responde.'), { status: 503 });
     vi.spyOn(api, 'sendMentorMessage').mockRejectedValueOnce(error);
 
     renderWithProviders(<MentorChatPage />);
